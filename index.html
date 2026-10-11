@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>El laberinto del osito</title>
+<style>
+:root{--bg:#f3ecdc;--card:#fbf7ec;--ink:#2f4a37;--acc:#5d8a66;--wall:#3f6b4b;--mut:#7a8a6f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c261f;--card:#26332a;--ink:#eadfc6;--acc:#8fbf98;--wall:#a9d1b0;--mut:#9fb0a0}}
+:root[data-theme="dark"]{--bg:#1c261f;--card:#26332a;--ink:#eadfc6;--acc:#8fbf98;--wall:#a9d1b0;--mut:#9fb0a0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,'Times New Roman',serif;text-align:center;padding:16px;min-height:100vh}
+h1{font-size:1.5rem;margin:8px 0 4px}
+#msg{margin:0 auto 10px;max-width:440px;font-size:.95rem;color:var(--mut);min-height:2.6em}
+#hud{display:flex;justify-content:center;gap:18px;margin-bottom:10px;font-size:1rem}
+canvas{background:var(--card);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);touch-action:none;max-width:100%}
+#pad{display:grid;grid-template-columns:repeat(3,56px);gap:6px;justify-content:center;margin:14px auto}
+#pad button{height:52px;font-size:1.3rem}
+button{background:var(--acc);color:#fff;border:0;border-radius:12px;padding:10px 18px;font-size:1rem;font-family:inherit}
+button:active{transform:scale(.96)}
+#ov{position:fixed;inset:0;background:rgba(20,30,22,.7);display:none;align-items:center;justify-content:center;padding:24px}
+#ov div{background:var(--card);border-radius:16px;padding:24px;max-width:360px}
+#ov h2{margin:0 0 8px}#ov p{margin:0 0 16px;line-height:1.5}
+#toast{height:1.4em;color:var(--acc);font-weight:bold;margin-top:6px}
+</style></head>
+<body>
+<h1>🐻 El laberinto del osito</h1>
+<p id="msg"></p>
+<div id="hud"><span id="lv"></span><span id="gu"></span><span id="mv"></span></div>
+<canvas id="c"></canvas>
+<div id="toast"></div>
+<div id="pad"><span></span><button data-d="0,-1">▲</button><span></span><button data-d="-1,0">◀</button><button data-d="0,1">▼</button><button data-d="1,0">▶</button></div>
+<button id="re">Nuevo laberinto</button>
+<div id="ov"><div><h2 id="ot"></h2><p id="op"></p><button id="ob"></button></div></div>
+<script>
+const $=i=>document.getElementById(i);
+const L=[
+{n:7,g:'😈',t:'Nivel 1 · La risa malvada',d:'Peque te espera con su risa malvada. Juntá los 3 guisos para que te deje pasar.'},
+{n:10,g:'😤',t:'Nivel 2 · Cara de enojada',d:'Peque se enojó. Se arregla con guiso, otra vez 3. Acá manda ella.'},
+{n:13,g:'⭐',t:'Nivel 3 · La estrella de Amelia',d:'Último tramo: guiso en mano y seguí la estrella hasta Amelia.'}];
+const cv=$('c'),ctx=cv.getContext('2d');
+let lv=0,n,cells,px,py,gx,gy,pots,got,moves,S,cs,open=false;
+function gen(){
+ cells=Array.from({length:n*n},()=>15);
+ const st=[[0,0]],seen=new Set(['0,0']);
+ while(st.length){
+  const [x,y]=st[st.length-1];
+  const nb=[[0,-1,1,4],[1,0,2,8],[0,1,4,1],[-1,0,8,2]].filter(([dx,dy])=>{const a=x+dx,b=y+dy;return a>=0&&b>=0&&a<n&&b<n&&!seen.has(a+','+b)});
+  if(!nb.length){st.pop();continue}
+  const [dx,dy,w,o]=nb[Math.random()*nb.length|0],a=x+dx,b=y+dy;
+  cells[y*n+x]&=~w;cells[b*n+a]&=~o;seen.add(a+','+b);st.push([a,b]);
+ }
+}
+function ov(t,p,b,f){$('ot').textContent=t;$('op').textContent=p;$('ob').textContent=b;$('ob').onclick=()=>{$('ov').style.display='none';open=false;f()};$('ov').style.display='flex';open=true}
+function start(intro){
+ n=L[lv].n;gen();px=py=0;gx=gy=n-1;pots=[];
+ while(pots.length<3){const x=Math.random()*n|0,y=Math.random()*n|0;
+  if((x||y)&&!(x==gx&&y==gy)&&!pots.some(p=>p[0]==x&&p[1]==y))pots.push([x,y])}
+ got=0;moves=0;S=Math.min(innerWidth-32,440);
+ const r=devicePixelRatio||1;cv.width=cv.height=S*r;cv.style.width=cv.style.height=S+'px';ctx.setTransform(r,0,0,r,0,0);cs=S/n;
+ $('msg').textContent=L[lv].d;$('toast').textContent='';draw();
+ if(intro)ov(L[lv].t,L[lv].d,'¡Vamos!',()=>{});
+}
+function em(e,x,y,s,a){ctx.globalAlpha=a||1;ctx.font=(cs*s)+'px serif';ctx.fillText(e,(x+.5)*cs,(y+.55)*cs);ctx.globalAlpha=1}
+function draw(){
+ const cs_=getComputedStyle(document.documentElement);
+ ctx.clearRect(0,0,S,S);ctx.textAlign='center';ctx.textBaseline='middle';
+ if(got==3){ctx.fillStyle=cs_.getPropertyValue('--acc');ctx.globalAlpha=.3;ctx.beginPath();ctx.arc((gx+.5)*cs,(gy+.5)*cs,cs*.45,0,7);ctx.fill();ctx.globalAlpha=1}
+ em(L[lv].g,gx,gy,.7,got==3?1:.5);
+ pots.forEach(p=>em('🍲',p[0],p[1],.65));
+ em('🐻',px,py,.7);
+ ctx.strokeStyle=cs_.getPropertyValue('--wall');ctx.lineWidth=3;ctx.lineCap='round';ctx.beginPath();
+ for(let y=0;y<n;y++)for(let x=0;x<n;x++){const c=cells[y*n+x],X=x*cs,Y=y*cs;
+  if(c&1){ctx.moveTo(X,Y);ctx.lineTo(X+cs,Y)}
+  if(c&2){ctx.moveTo(X+cs,Y);ctx.lineTo(X+cs,Y+cs)}
+  if(c&4){ctx.moveTo(X,Y+cs);ctx.lineTo(X+cs,Y+cs)}
+  if(c&8){ctx.moveTo(X,Y);ctx.lineTo(X,Y+cs)}}
+ ctx.stroke();
+ $('lv').textContent='Nivel '+(lv+1)+'/3';$('gu').textContent='🍲 '+got+'/3';$('mv').textContent='Pasos: '+moves;
+}
+function move(dx,dy){
+ if(open)return;
+ const bit=dy<0?1:dx>0?2:dy>0?4:8;
+ if(cells[py*n+px]&bit)return;
+ px+=dx;py+=dy;moves++;
+ const i=pots.findIndex(p=>p[0]==px&&p[1]==py);
+ if(i>=0){pots.splice(i,1);got++;$('toast').textContent=got==3?'¡Guiso completo! Ahora andá con peque':'¡Guiso! 🍲'}
+ draw();
+ if(px==gx&&py==gy){
+  if(got<3){$('toast').textContent='Peque dice: sin guiso no pasás 😤';return}
+  if(lv<2)ov('¡Nivel superado!','Lo lograste en '+moves+' pasos. Peque ya no está tan enojada… igual falta lo que falta.','Siguiente nivel',()=>{lv++;start(true)});
+  else ov('Llegaste, osito 🐻','Desde el 01/04/2026 que empezamos a hablar, y todavía nos quedan muchos laberintos para recorrer juntos. Cuando llegue Amelia, va a estar esperándonos en esa estrella ⭐. — Tu peque','Jugar de nuevo',()=>{lv=0;start(true)});
+ }
+}
+document.addEventListener('keydown',e=>{const m={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]}[e.key];if(m){e.preventDefault();move(...m)}});
+document.querySelectorAll('#pad button').forEach(b=>b.onclick=()=>move(...b.dataset.d.split(',').map(Number)));
+let tx,ty;
+cv.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+cv.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+ if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;
+ Math.abs(dx)>Math.abs(dy)?move(dx>0?1:-1,0):move(0,dy>0?1:-1)});
+$('re').onclick=()=>start(false);
+addEventListener('resize',()=>{if(cv.width)start(false)});
+start(true);
+</script>
+</body></html>
